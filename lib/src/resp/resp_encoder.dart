@@ -26,7 +26,7 @@ class RespEncoder {
         bytes = utf8.encode(arg);
       } else if (arg is List<int>) {
         bytes = arg;
-      } else if (arg is int) {
+      } else if (arg is int || arg is bool) {
         bytes = ascii.encode(arg.toString());
       } else {
         throw ArgumentError.value(

@@ -48,20 +48,57 @@ class RedisClient {
     });
   }
 
-  static Future<Socket> _createSocket({
-    required String host,
-    required int port,
-    Duration? timeout,
-    bool secure = false,
+  /// Set [key] to hold the string [value].
+  /// If [key] already holds a value, it is overwritten, regardless of its type.
+  /// Any previous time to live associated with the key is discarded on successful SET operation.
+  ///
+  /// (Optional) `ttl` - Set the specified expire time.
+  ///
+  /// (Optional) `nx` - Only set the key if it does not already exist.
+  ///
+  /// (Optional) `xx` - Only set the key if it already exists.
+  ///
+  /// (Optional) `keepTtl` - Retain the time to live associated with the key.
+  ///
+  /// (Optional) `get` - Return the old string stored at key, or nil if key did not exist.
+  /// An error is returned and `SET` aborted if the value stored at key is not a string.
+  ///
+  /// Returns:
+  /// * `OK` string if `SET` was executed correctly.`
+  /// * `null` if the SET operation was not performed because the user specified
+  /// the NX or XX option but the condition was not met, or the key did not exist.
+  /// * the old string value stored at key if `get` argument is given.
+  Future<Object?> set(
+    String key,
+    Object value, {
+    Duration? ttl,
+    bool? nx,
+    bool? xx,
+    bool? keepTtl,
+    bool? get,
   }) async {
-    if (secure) {
-      return SecureSocket.connect(host, port, timeout: timeout);
-    }
-    return Socket.connect(host, port, timeout: timeout);
+    return sendCommandRaw([
+      'SET',
+      key,
+      value,
+      if (ttl != null) ...<Object>['PX', ttl.inMilliseconds],
+      if (nx != null) 'NX',
+      if (xx != null) 'XX',
+      if (keepTtl != null) 'KEEPTTL',
+      if (get != null) 'GET',
+    ]);
+  }
+
+  /// Get the value of key. If the key does not exist the special value nil is returned.
+  /// An error is returned if the value stored at key is not a string, because GET only handles string values.
+  ///
+  /// Returns the value of key, or nil when key does not exist.
+  Future<Object?> get(String key) async {
+    return sendCommandRaw(['GET', key]);
   }
 
   /// Sends a raw command with [arguments] to the server & receives the result as [Object?].
-  Future<Object?> sendCommand(List<Object> arguments) async {
+  Future<Object?> sendCommandRaw(List<Object> arguments) async {
     if (_closing) {
       throw RedisClientException('Can not execute operation: connection closed');
     }
@@ -73,6 +110,60 @@ class RedisClient {
     final c = Completer<Object?>();
     _queue.addLast(c);
     return await c.future;
+  }
+
+  /// Closes the opened connection.
+  ///
+  /// Use the [force] parameter to close all pending commands immediately.
+  Future<void> close({bool force = false}) async {
+    if (!_closing) {
+      // send QUIT to server
+      try {
+        final quit = sendCommandRaw(['QUIT']);
+        scheduleMicrotask(() async {
+          await quit.catchError((_) => null);
+        });
+      } catch (_) {
+        // ignore
+      }
+    }
+    _closing = true;
+
+    if (force) {
+      await _stream.close();
+
+      // Resolve all pending requests
+      final pending = _queue.toList(growable: false);
+      _queue.clear();
+
+      // complete all pending requests with error that connection got forcibly closed
+      final e = RedisClientException('Can not execute operation: connection forcibly closed');
+      final st = StackTrace.current;
+      for (var c in pending) {
+        c.completeError(e, st);
+      }
+    } else {
+      scheduleMicrotask(() async {
+        await _stream.close();
+      });
+
+      // wait for [_readInput] to finish that the input stream can be closed
+      await _closingCompleter.future;
+    }
+
+    await _stream.cancel();
+  }
+
+  static Future<Socket> _createSocket({
+    required String host,
+    required int port,
+    Duration? timeout,
+    bool secure = false,
+  }) async {
+    if (secure) {
+      return SecureSocket.connect(host, port, timeout: timeout);
+    }
+    return Socket.connect(host, port, timeout: timeout);
   }
 
   Future<void> _readInput() async {
@@ -114,48 +205,6 @@ class RedisClient {
         st,
       );
     }
-  }
-
-  /// Closes the opened connection.
-  ///
-  /// Use the [force] parameter to close all pending commands immediately.
-  Future<void> close({bool force = false}) async {
-    if (!_closing) {
-      // send QUIT to server
-      try {
-        final quit = sendCommand(['QUIT']);
-        scheduleMicrotask(() async {
-          await quit.catchError((_) => null);
-        });
-      } catch (_) {
-        // ignore
-      }
-    }
-    _closing = true;
-
-    if (force) {
-      await _stream.close();
-
-      // Resolve all pending requests
-      final pending = _queue.toList(growable: false);
-      _queue.clear();
-
-      // complete all pending requests with error that connection got forcibly closed
-      final e = RedisClientException('Can not execute operation: connection forcibly closed');
-      final st = StackTrace.current;
-      for (var c in pending) {
-        c.completeError(e, st);
-      }
-    } else {
-      scheduleMicrotask(() async {
-        await _stream.close();
-      });
-
-      // wait for [_readInput] to finish that the input stream can be closed
-      await _closingCompleter.future;
-    }
-
-    await _stream.cancel();
   }
 
   Future<void> _abort(Object e, [StackTrace? st]) async {

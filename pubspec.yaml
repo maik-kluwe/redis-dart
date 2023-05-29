@@ -1,6 +1,6 @@
 name: redis_dart
 description: Redis client (https://redis.io/) for Dart
-version: 0.1.1
+version: 0.2.0
 homepage: https://github.com/maik-kluwe/redis-dart
 repository: https://github.com/maik-kluwe/redis-dart
 issue_tracker: https://github.com/maik-kluwe/redis-dart/issues

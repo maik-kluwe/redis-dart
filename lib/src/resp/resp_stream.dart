@@ -4,6 +4,22 @@ import 'dart:typed_data';
 
 import 'package:redis_dart/redis_dart.dart';
 
+/// Represents a stream that implements the RESP[1] protocol
+/// [1] https://redis.io/docs/reference/protocol-spec/
+///
+/// To interact with the server use the `write` and/or `readValue` methods.
+///
+/// Example:
+/// ```dart
+/// final stream = RespStream(Socket.connect('localhost', 6379));
+///
+/// // write commands to server
+/// stream.write(['SET', 'key1', 'value1']);
+///
+/// // read from server (blocks until server sends data)
+/// final result = stream.readValue(); // 'OK' (type of String)
+///
+/// ```
 class RespStream {
   static final _emptyList = Uint8List.fromList([]);
 
@@ -12,23 +28,35 @@ class RespStream {
 
   Uint8List _buffer = _emptyList;
 
+  /// Creates a new RespStream with given [socket]
   RespStream(Socket socket)
       : _input = StreamIterator(socket),
         _output = socket;
 
+  /// Encodes arguments and writes to the server
+  ///
+  /// Usage:
+  /// ```dart
+  /// stream.write(['GET', 'key1']);
+  /// ```
   void write(List<Object> arguments) {
     _output.add(RespEncoder.encode(arguments));
   }
 
+  /// Decodes server response stream into objects (e.g Strings, integers, Lists & Errors).
+  ///
+  /// This operation blocks until server sends a valid response
   Future<Object?> readValue() async {
     return RespDecoder.decode(this);
   }
 
+  /// Reads one (1) byte from stream.
   Future<int?> readByte() async {
     final bytes = await readBytes(1);
     return bytes.isNotEmpty ? bytes[0] : null;
   }
 
+  /// Reads (n) bytes from stream.
   Future<Uint8List> readBytes(int size) async {
     final out = BytesBuilder(copy: false);
 
@@ -57,6 +85,7 @@ class RespStream {
     return out.toBytes();
   }
 
+  /// Reads bytes from stream until a newline `\r\n` is reached.
   Future<Uint8List> readLine() async {
     final out = BytesBuilder(copy: false);
 
@@ -85,10 +114,12 @@ class RespStream {
     return out.toBytes();
   }
 
+  /// Cancel writing to server.
   Future<dynamic> cancel() async {
     return _input.cancel();
   }
 
+  /// Cancels listening to server output.
   Future<void> close() async {
     return _output.close().catchError((_) {/* ignore */});
   }

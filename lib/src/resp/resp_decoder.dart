@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:redis_dart/redis_dart.dart';
 
+/// A [RespDecoder] decodes a [RespStream] incoming data (byte array) into objects.
 class RespDecoder {
   static final int _simpleString = '+'.codeUnitAt(0);
   static final int _integer = ':'.codeUnitAt(0);
@@ -12,6 +13,7 @@ class RespDecoder {
 
   RespDecoder._();
 
+  /// Decodes the [RespStream] input to an object.
   static Future<Object?> decode(RespStream input) async {
     // read line from server
     Uint8List line = await input.readLine();

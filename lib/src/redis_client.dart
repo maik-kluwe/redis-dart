@@ -8,15 +8,14 @@ import 'package:redis_dart/redis_dart.dart';
 ///
 /// Use `RedisClient.connect` to create a connection.
 class RedisClient {
-  final Socket _socket;
   final RespStream _stream;
   final Queue<Completer<Object?>> _queue;
 
   bool _closing = false;
   final _closingCompleter = Completer<void>();
 
-  RedisClient._(this._socket)
-      : _stream = RespStream(_socket),
+  RedisClient._(Socket socket)
+      : _stream = RespStream(socket),
         _queue = ListQueue<Completer<Object?>>() {
     scheduleMicrotask(_readInput);
   }
